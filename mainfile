@@ -1,0 +1,199 @@
+/*
+Fostera — Single-file React app (Tailwind)
+
+What's included below:
+- High-level product overview & feature list
+- Color flag rules (screentime buckets)
+- Data model (DB schema)
+- Minimal REST API spec
+- Accessibility & privacy notes
+- A single-file React component (default export) that renders a dashboard with mock data
+
+Tech stack suggestions:
+- Frontend: React + Tailwind CSS
+- Backend: Node.js/Express (or Fastify) + PostgreSQL (or Firebase for faster MVP)
+- Analytics: time-series table in DB + optional InfluxDB/ClickHouse for scale
+- Authentication: JWT + refresh tokens or Auth0/Firebase Auth
+- Hosting: Vercel / Netlify for frontend, Render / Railway / AWS for backend
+
+COLOR FLAG BUCKETS (today / daily total)
+- Black  : > 12.0 hours
+- Red    : 10.0 - 12.0 hours
+- Purple : 8.0 - 10.0 hours
+- Orange : 6.0 - 8.0 hours
+- Yellow : 4.0 - 6.0 hours
+- Green  : 0.0 - 4.0 hours
+
+DATA MODEL (simplified)
+
+users
+- id (uuid)
+- name
+- email
+- timezone
+- created_at
+
+screen_time_records
+- id (uuid)
+- user_id (fk -> users.id)
+- start_ts (timestamp)
+- end_ts (timestamp)
+- duration_seconds (int)
+- category (optional: app category)
+- created_at
+
+daily_aggregates (materialized for fast reads)
+- id
+- user_id
+- day_date (date)
+- total_seconds
+- created_at
+
+API (minimal)
+- POST /api/v1/auth/login  -> {email,password} -> returns JWT
+- POST /api/v1/record     -> {user_id, start_ts, end_ts} -> stores record
+- GET  /api/v1/users/:id/summary?date=YYYY-MM-DD -> {total_seconds, color_flag, breakdown}
+- GET  /api/v1/users -> list users with daily summary
+
+Privacy: store minimum PII, keep data encrypted at rest, allow user export & delete (GDPR/PDPA-ready features)
+
+----
+Below is a working single-file React component that shows a Fostera dashboard with mock users and screentime. It uses Tailwind classes and is designed to be previewed inside a CodeSandbox or Vercel Play.
+*/
+
+import React, { useMemo, useState } from 'react';
+
+// Helper: convert seconds to hours (decimal) and hh:mm
+const secondsToHours = (s) => s / 3600;
+const formatHM = (s) => {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${h}h ${m}m`;
+};
+
+function getColorFlagByHours(hours) {
+  // returns { label, bgClass, textClass }
+  if (hours > 12) return { label: 'BLACK', bg: 'bg-neutral-900', text: 'text-white' };
+  if (hours >= 10) return { label: 'RED', bg: 'bg-red-600', text: 'text-white' };
+  if (hours >= 8) return { label: 'PURPLE', bg: 'bg-violet-600', text: 'text-white' };
+  if (hours >= 6) return { label: 'ORANGE', bg: 'bg-orange-500', text: 'text-white' };
+  if (hours >= 4) return { label: 'YELLOW', bg: 'bg-yellow-300', text: 'text-black' };
+  return { label: 'GREEN', bg: 'bg-emerald-500', text: 'text-white' };
+}
+
+// Mock dataset
+const MOCK_USERS = [
+  { id: 'u1', name: 'Aisha Verma', email: 'aisha@example.com', today_seconds: 14 * 3600 + 12 * 60 },
+  { id: 'u2', name: 'Ravi Sharma', email: 'ravi@example.com', today_seconds: 9 * 3600 + 35 * 60 },
+  { id: 'u3', name: 'Priya Singh', email: 'priya@example.com', today_seconds: 5 * 3600 + 20 * 60 },
+  { id: 'u4', name: 'Sanjay Patel', email: 'sanjay@example.com', today_seconds: 2 * 3600 + 45 * 60 },
+  { id: 'u5', name: 'Demo Child', email: 'demo@example.com', today_seconds: 11 * 3600 + 5 * 60 },
+];
+
+export default function FosteraDashboard() {
+  const [users, setUsers] = useState(MOCK_USERS);
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    return users.filter((u) => u.name.toLowerCase().includes(query.toLowerCase()) || u.email.toLowerCase().includes(query.toLowerCase()));
+  }, [users, query]);
+
+  // simulate quick action: reset user's tracking (for demo only)
+  const resetUser = (id) => {
+    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, today_seconds: 0 } : u)));
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <header className="max-w-6xl mx-auto mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-extrabold">Fostera</h1>
+            <p className="text-sm text-gray-600">Digital detox — daily screen time tracking & colour flags</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm">Invite</button>
+            <button className="px-4 py-2 border border-gray-200 rounded-md">Settings</button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Overview */}
+        <section className="lg:col-span-1 bg-white p-4 rounded-2xl shadow">
+          <h2 className="font-semibold text-lg">Overview</h2>
+          <div className="mt-4 space-y-3">
+            <div className="text-sm text-gray-600">Total users: <strong>{users.length}</strong></div>
+            <div className="text-sm text-gray-600">Date: <strong>{new Date().toLocaleDateString()}</strong></div>
+            <div className="pt-3 border-t" />
+            <div>
+              <h3 className="font-medium">Color flag key</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {['BLACK','RED','PURPLE','ORANGE','YELLOW','GREEN'].map((c) => (
+                  <div key={c} className="flex items-center gap-2 text-sm">
+                    <span className={`w-6 h-6 rounded-full ${c === 'BLACK' ? 'bg-neutral-900' : c === 'RED' ? 'bg-red-600' : c === 'PURPLE' ? 'bg-violet-600' : c === 'ORANGE' ? 'bg-orange-500' : c === 'YELLOW' ? 'bg-yellow-300' : 'bg-emerald-500'}`}></span>
+                    <span>{c}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Right top: Users list */}
+        <section className="lg:col-span-2 bg-white p-4 rounded-2xl shadow">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-lg">Users — Today</h2>
+            <div className="flex items-center gap-3">
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search users" className="px-3 py-2 border rounded-lg" />
+              <button className="px-3 py-2 border rounded-lg">Export CSV</button>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {filtered.map((u) => {
+              const hours = secondsToHours(u.today_seconds);
+              const flag = getColorFlagByHours(hours);
+              const pct = Math.min(100, Math.round((hours / 16) * 100));
+
+              return (
+                <div key={u.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center font-medium text-gray-700">{u.name.split(' ').map(n=>n[0]).slice(0,2).join('')}</div>
+                    <div>
+                      <div className="font-medium">{u.name}</div>
+                      <div className="text-sm text-gray-500">{u.email}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 px-6">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-gray-600">Today: <strong>{formatHM(u.today_seconds)}</strong></div>
+                      <div className="text-sm text-gray-600">{hours.toFixed(2)}h</div>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                        <div style={{ width: `${pct}%` }} className={`h-2 ${flag.bg}`}></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className={`px-3 py-1 rounded-full text-xs font-semibold ${flag.bg} ${flag.text}`}>{flag.label}</div>
+                    <button onClick={() => resetUser(u.id)} className="px-3 py-1 border rounded">Reset</button>
+                  </div>
+                </div>
+              );
+            })}
+
+            {filtered.length === 0 && <div className="text-center text-gray-500 py-6">No users match that search.</div>}
+          </div>
+        </section>
+
+      </main>
+
+      <footer className="max-w-6xl mx-auto mt-6 text-sm text-gray-500">Built with care — Fostera (demo). Want backend API, analytics, or export features? Ask and I’ll add them.</footer>
+    </div>
+  );
+}
